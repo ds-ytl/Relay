@@ -1,0 +1,35 @@
+[package]
+name = "relay-runtime"
+description = "Relay · runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+relay-core.workspace = true
+relay-storage.workspace = true
+relay-context.workspace = true
+relay-router.workspace = true
+relay-platform.workspace = true
+relay-tool-api.workspace = true
+relay-input-tool.workspace = true
+relay-accessibility-tool.workspace = true
+relay-openai.workspace = true
+relay-executor.workspace = true
+relay-sandbox.workspace = true
+relay-delivery.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+image.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+image.workspace = true
+rusqlite.workspace = true

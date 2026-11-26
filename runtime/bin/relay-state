@@ -1,0 +1,33 @@
+#!/bin/bash
+# Relay standalone state protocol: called by an execution turn to write the phase to $RELAY_STATE_FILE.
+# Usage: relay-state done --summary "ledger generated" --artifact report.xlsx --delivery open_file
+set -euo pipefail
+phase="${1:-continue}"
+shift || true
+python3 - "$phase" "$@" <<'PY'
+import json, os, sys
+phase = sys.argv[1]
+args = sys.argv[2:]
+summary = ""
+artifacts = []
+delivery = None
+i = 0
+while i < len(args):
+    key = args[i]
+    if key in ("--summary", "-s") and i + 1 < len(args):
+        summary = args[i + 1]; i += 2
+    elif key in ("--artifact", "-a") and i + 1 < len(args):
+        artifacts.append(args[i + 1]); i += 2
+    elif key in ("--delivery", "-d") and i + 1 < len(args):
+        delivery = args[i + 1]; i += 2
+    else:
+        i += 1
+payload = {"phase": phase, "summary": summary, "artifacts": artifacts}
+if delivery:
+    payload["delivery"] = delivery
+path = os.environ.get("RELAY_STATE_FILE") or os.path.join(os.environ["RELAY_TASK_DIR"], ".relay", "state.json")
+os.makedirs(os.path.dirname(path), exist_ok=True)
+with open(path, "w", encoding="utf-8") as f:
+    json.dump(payload, f, ensure_ascii=False)
+print(f"[relay] phase={phase} summary={summary}")
+PY

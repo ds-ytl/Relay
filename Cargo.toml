@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/relay-core",
+    "crates/relay-storage",
+    "crates/relay-context",
+    "crates/relay-router",
+    "crates/relay-openai",
+    "crates/relay-executor",
+    "crates/relay-sandbox",
+    "crates/relay-platform",
+    "crates/relay-tool-api",
+    "crates/relay-input-tool",
+    "crates/relay-accessibility-tool",
+    "crates/relay-delivery",
+    "crates/relay-runtime",
+    "crates/relay-desktop",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+relay-core = { path = "crates/relay-core" }
+relay-storage = { path = "crates/relay-storage" }
+relay-context = { path = "crates/relay-context" }
+relay-router = { path = "crates/relay-router" }
+relay-openai = { path = "crates/relay-openai" }
+relay-executor = { path = "crates/relay-executor" }
+relay-sandbox = { path = "crates/relay-sandbox" }
+relay-platform = { path = "crates/relay-platform" }
+relay-tool-api = { path = "crates/relay-tool-api" }
+relay-input-tool = { path = "crates/relay-input-tool" }
+relay-accessibility-tool = { path = "crates/relay-accessibility-tool" }
+relay-delivery = { path = "crates/relay-delivery" }
+relay-runtime = { path = "crates/relay-runtime" }
+
+anyhow = "1.0.104"
+async-trait = "0.1.92"
+base64 = "0.22.1"
+chrono = { version = "0.4.45", features = ["serde"] }
+dirs = "6.0.0"
+notify-rust = "4.19.0"
+open = "5.4.4"
+reqwest = { version = "0.12.28", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+tempfile = "3.27.0"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
+sha2 = "0.10.9"
+thiserror = "2.0.20"
+tokio = { version = "1.54.1", features = ["full"] }
+toml = "0.8.23"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tracing-appender = "0.2.5"
+uuid = { version = "1.27.0", features = ["v4", "serde"] }
+
+[profile.dev]
+opt-level = 0
+debug = 1
+
+[profile.release]
+lto = "thin"
+strip = true

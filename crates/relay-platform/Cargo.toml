@@ -1,0 +1,21 @@
+[package]
+name = "relay-platform"
+description = "Relay · cross-platform desktop capabilities (clipboard / windows and screenshots / global hotkeys / tray)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arboard = "3"
+chrono.workspace = true
+global-hotkey = "0.6"
+image = { version = "0.25", default-features = false, features = ["png"] }
+muda = "0.20"
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tray-icon = "0.25"
+xcap = "0.7"
+
+[dev-dependencies]
+tempfile.workspace = true

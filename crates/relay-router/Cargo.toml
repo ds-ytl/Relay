@@ -1,0 +1,12 @@
+[package]
+name = "relay-router"
+description = "Relay · router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+relay-core.workspace = true
+chrono.workspace = true
+serde.workspace = true
+thiserror.workspace = true

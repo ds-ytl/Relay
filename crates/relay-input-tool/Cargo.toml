@@ -1,0 +1,20 @@
+[package]
+name = "relay-input-tool"
+description = "Relay · computer_input: mouse and keyboard control (macOS / Windows / Linux) with human-like motion and strict argument validation"
+version.workspace = true
+edition = "2024"
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+rand = "0.9"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+relay-tool-api.workspace = true
+# Platform FFI lives in the dependency: macOS CGEvent / Windows SendInput / Linux X11-XTest.
+enigo = { version = "0.6", default-features = false, features = ["x11rb"] }

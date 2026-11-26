@@ -1,0 +1,18 @@
+# Rust build output
+/target/
+**/*.rs.bk
+
+# Local scratch material and generated artifacts
+/.uploads/
+/artifacts/
+
+# Logs and local environment
+*.log
+.env
+.env.*
+
+# OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

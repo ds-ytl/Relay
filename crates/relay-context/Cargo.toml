@@ -1,0 +1,17 @@
+[package]
+name = "relay-context"
+description = "Relay · context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+relay-core.workspace = true
+relay-platform.workspace = true
+chrono.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
