@@ -15,6 +15,18 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  # Temporary: find which macOS runner images this repository can actually get.
+  probe:
+    name: Probe ${{ matrix.image }}
+    runs-on: ${{ matrix.image }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [macos-latest, macos-15, macos-14, macos-13]
+    steps:
+      - run: uname -m && sw_vers
+
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runs-on }}
@@ -29,7 +41,7 @@ jobs:
             artifact: relay-windows-x86_64
             binary: relay.exe
           - name: macOS arm64
-            runs-on: macos-14
+            runs-on: macos-latest
             target: aarch64-apple-darwin
             artifact: relay-macos-arm64
             binary: relay
@@ -48,7 +60,24 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build
-        run: cargo build --release --locked -p relay-desktop --target ${{ matrix.target }}
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo build --release --locked -p relay-desktop \
+            --target ${{ matrix.target }} 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### Build failed: ${{ matrix.target }}"
+              echo '```'
+              grep -nE '^error|^\s+-->|error\[E[0-9]+\]' build.log | head -30
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            grep -E '^error' -A2 build.log | head -40 | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+            exit "$status"
+          fi
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
