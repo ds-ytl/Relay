@@ -25,6 +25,9 @@ const RENDER_TOTAL_LIMIT: usize = 200_000;
 const IMAGE_TOKENS: u32 = 1_200;
 /// Structural overhead per message (role, separators, and so on).
 const ITEM_OVERHEAD: u32 = 4;
+/// How many times one model call may be retried with a larger output budget after it was
+/// truncated. A thinking model can spend the whole budget on reasoning before it answers.
+pub(crate) const MAX_TRUNCATION_RETRIES: u8 = 2;
 
 /// Window budget: the window size plus the ratio that triggers compaction.
 #[derive(Debug, Clone, Copy)]
@@ -95,6 +98,7 @@ impl Budget {
     ) -> Result<relay_openai::ModelOutput, ModelError> {
         let overhead = request_overhead(&request.instructions, &request.tools);
         let mut retry = false;
+        let mut truncated = 0u8;
         loop {
             let input = overhead + estimate(items);
             if (retry || self.needs_summary(input, request.max_output_tokens))
@@ -114,6 +118,19 @@ impl Budget {
                 Err(err) if !retry && is_context_overflow(&err.to_string()) => {
                     request.max_output_tokens = (request.max_output_tokens / 2).clamp(1, 1024);
                     retry = true;
+                }
+                // The reply was truncated with nothing usable: ask for more room while the window
+                // still has some, instead of failing the whole step.
+                Err(err) if err.is_output_truncated() && truncated < MAX_TRUNCATION_RETRIES => {
+                    let raised = self.checked_output_limit(
+                        request.max_output_tokens.saturating_mul(2),
+                        overhead + estimate(items),
+                    )?;
+                    if raised <= request.max_output_tokens {
+                        return Err(err);
+                    }
+                    request.max_output_tokens = raised;
+                    truncated += 1;
                 }
                 result => return result,
             }

@@ -23,4 +23,12 @@ pub enum RuntimeError {
     Io(#[from] std::io::Error),
 }
 
+impl RuntimeError {
+    /// True when a model call used up its output budget and returned nothing usable: the caller
+    /// can retry the same request with more headroom.
+    pub fn is_output_truncated(&self) -> bool {
+        matches!(self, RuntimeError::Model(err) if err.is_output_truncated())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, RuntimeError>;

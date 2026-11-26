@@ -41,6 +41,9 @@ use crate::understanding::{
 };
 
 const EVENT_BUFFER: usize = 256;
+/// Output budget requested for an executor call: enough for a progress note plus one tool call,
+/// with headroom for a reasoning model's thinking.
+const EXECUTOR_OUTPUT_TOKENS: u32 = 8192;
 
 /// How the pipeline starts: whether the plan already came out of the understanding phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1229,6 +1232,10 @@ impl Runtime {
             let mut exec_seq = 0u32;
             // When the current model call is rejected for exceeding the window, shrink once and retry.
             let mut retry_output_limit = None;
+            // Output room learned from a truncated call: kept for the rest of the turn so the model
+            // does not have to burn the whole budget twice.
+            let mut output_floor = 0u32;
+            let mut truncated_retries = 0u8;
 
             loop {
                 if self.is_cancelled(task.id) {
@@ -1327,7 +1334,8 @@ impl Runtime {
                         observed_input = 0;
                     }
                 }
-                let requested_output = retry_output_limit.unwrap_or(8192);
+                let requested_output =
+                    retry_output_limit.unwrap_or(EXECUTOR_OUTPUT_TOKENS.max(output_floor));
                 let output_limit = budget.checked_output_limit(
                     requested_output,
                     overhead + archived_cost + budget::estimate(&items[append_from..]),
@@ -1345,21 +1353,46 @@ impl Runtime {
                     previous_response_id: None,
                     tools: exec_tools.clone(),
                 };
-                let (sent_request_id, output) =
-                    match self.streamed_complete(&task, turn, request).await {
-                        Ok(output) => output,
-                        Err(err)
-                            if retry_output_limit.is_none()
-                                && budget::is_context_overflow(&err.to_string()) =>
-                        {
-                            retry_output_limit = Some((output_limit / 2).clamp(1, 1024));
-                            continue;
+                let (sent_request_id, output) = match self
+                    .streamed_complete(&task, turn, request)
+                    .await
+                {
+                    Ok(output) => output,
+                    Err(err)
+                        if retry_output_limit.is_none()
+                            && budget::is_context_overflow(&err.to_string()) =>
+                    {
+                        retry_output_limit = Some((output_limit / 2).clamp(1, 1024));
+                        continue;
+                    }
+                    // Truncated with nothing usable (a thinking model can spend the whole
+                    // budget on reasoning): raise the output budget and call again, as long as
+                    // the window has room left.
+                    Err(err) if err.is_output_truncated() => {
+                        let raised = budget.checked_output_limit(
+                            requested_output.saturating_mul(2),
+                            overhead + archived_cost + budget::estimate(&items[append_from..]),
+                        );
+                        let more_room = truncated_retries < budget::MAX_TRUNCATION_RETRIES;
+                        match raised {
+                            Ok(raised) if more_room && raised > output_limit => {
+                                truncated_retries += 1;
+                                output_floor = raised;
+                                continue;
+                            }
+                            _ => {
+                                failure = Some(format!(
+                                    "executor agent call failed: {err}; max_output_tokens was already widened to {output_limit}"
+                                ));
+                                break;
+                            }
                         }
-                        Err(err) => {
-                            failure = Some(format!("executor agent call failed: {err}"));
-                            break;
-                        }
-                    };
+                    }
+                    Err(err) => {
+                        failure = Some(format!("executor agent call failed: {err}"));
+                        break;
+                    }
+                };
                 retry_output_limit = None;
                 if let Some(cost) = output.usage.as_ref() {
                     // Main execution request: refresh the current context usage in sync; the UI badge trusts only this number.

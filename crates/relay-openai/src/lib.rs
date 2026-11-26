@@ -48,8 +48,20 @@ pub enum ModelError {
     Parse(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    /// The output budget ran out before the model produced any text or tool call, typically
+    /// because a thinking model spent it all on reasoning. A retry with a larger
+    /// `max_output_tokens` can recover, unlike an oversized request.
+    #[error("model output was truncated ({reason}) and produced no text or tool call; raise max_output_tokens and retry")]
+    Truncated { reason: String },
     #[error("{0}")]
     Other(String),
+}
+
+impl ModelError {
+    /// True when the model used up its output budget and returned nothing usable.
+    pub fn is_output_truncated(&self) -> bool {
+        matches!(self, ModelError::Truncated { .. })
+    }
 }
 
 pub type Result<T, E = ModelError> = std::result::Result<T, E>;

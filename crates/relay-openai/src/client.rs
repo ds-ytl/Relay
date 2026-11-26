@@ -309,21 +309,39 @@ async fn consume_sse(
     let mut text = String::new();
     let mut completed: Option<ModelOutput> = None;
     let mut failure: Option<String> = None;
+    let mut truncated: Option<String> = None;
 
     while let Some(chunk) = resp.chunk().await? {
         let chunk = String::from_utf8_lossy(&chunk).replace("\r\n", "\n");
         buffer.push_str(&chunk);
         while let Some(index) = buffer.find("\n\n") {
             let block: String = buffer.drain(..index + 2).collect();
-            handle_sse_block(&block, &mut text, deltas, &mut completed, &mut failure);
+            handle_sse_block(
+                &block,
+                &mut text,
+                deltas,
+                &mut completed,
+                &mut failure,
+                &mut truncated,
+            );
         }
     }
     if !buffer.trim().is_empty() {
-        handle_sse_block(&buffer, &mut text, deltas, &mut completed, &mut failure);
+        handle_sse_block(
+            &buffer,
+            &mut text,
+            deltas,
+            &mut completed,
+            &mut failure,
+            &mut truncated,
+        );
     }
 
     if let Some(error) = failure {
         return Err(ModelError::Other(error));
+    }
+    if let Some(reason) = truncated {
+        return Err(ModelError::Truncated { reason });
     }
     if let Some(output) = completed {
         return Ok(output);
@@ -345,6 +363,7 @@ fn handle_sse_block(
     deltas: &UnboundedSender<StreamDelta>,
     completed: &mut Option<ModelOutput>,
     failure: &mut Option<String>,
+    truncated: &mut Option<String>,
 ) {
     let data = block
         .lines()
@@ -384,8 +403,14 @@ fn handle_sse_block(
                     .unwrap_or(false);
                 if failed {
                     *failure = Some(sse_error_message(response));
-                } else if let Ok(output) = parse_response(&response.to_string()) {
-                    *completed = Some(output);
+                } else {
+                    match parse_response(&response.to_string()) {
+                        Ok(output) => *completed = Some(output),
+                        // An incomplete response that yields nothing usable: keep the reason so
+                        // the caller can retry with a larger output budget.
+                        Err(ModelError::Truncated { reason }) => *truncated = Some(reason),
+                        Err(_) => {}
+                    }
                 }
             }
         }
@@ -474,9 +499,9 @@ fn parse_response(body: &str) -> Result<ModelOutput> {
             .and_then(|details| details.get("reason"))
             .and_then(Value::as_str);
         if let Some(reason) = incomplete {
-            return Err(ModelError::Other(format!(
-                "model output was truncated ({reason}) and produced no text or tool call; raise max_output_tokens and retry"
-            )));
+            return Err(ModelError::Truncated {
+                reason: reason.to_string(),
+            });
         }
         return Err(ModelError::Parse(format!(
             "response contains no output_text: {}",
@@ -557,6 +582,44 @@ mod tests {
     #[test]
     fn rejects_empty_output() {
         assert!(parse_response(r#"{"output":[]}"#).is_err());
+    }
+
+    #[test]
+    fn reports_truncated_output_as_retryable() {
+        // A thinking model spent the whole output budget on reasoning.
+        let body = r#"{
+            "output": [{"type": "reasoning", "summary": []}],
+            "incomplete_details": {"reason": "max_output_tokens"}
+        }"#;
+        let err = parse_response(body).unwrap_err();
+        assert!(err.is_output_truncated());
+        assert!(err.to_string().contains("max_output_tokens"));
+    }
+
+    #[tokio::test]
+    async fn streaming_incomplete_without_content_reports_truncation() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<StreamDelta>();
+        let mut text = String::new();
+        let mut completed = None;
+        let mut failure = None;
+        let mut truncated = None;
+        let block = concat!(
+            "event: response.incomplete\n",
+            "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",",
+            "\"output\":[{\"type\":\"reasoning\"}],",
+            "\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n"
+        );
+        handle_sse_block(
+            block,
+            &mut text,
+            &tx,
+            &mut completed,
+            &mut failure,
+            &mut truncated,
+        );
+        assert!(failure.is_none());
+        assert!(completed.is_none());
+        assert_eq!(truncated.as_deref(), Some("max_output_tokens"));
     }
 
     #[tokio::test]

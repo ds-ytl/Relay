@@ -182,6 +182,38 @@ async fn markdown_without_tools_does_not_count_as_script() {
 }
 
 #[tokio::test]
+async fn truncated_executor_call_is_retried_with_more_output_room() {
+    let temp = tempfile::tempdir().unwrap();
+    let model = Arc::new(MockModel::scripted([
+        plan_step(),
+        // The thinking step burned the whole output budget: no text, no tool call.
+        MockStep::Truncated,
+        step("Wrapping up the deliverable."),
+        bash(r#"relay-state done --summary "wrapped up after the retry""#),
+        step(verify_text()),
+    ]));
+    let runtime = runtime_with(model.clone(), &temp);
+
+    let task_id = runtime
+        .submit(TaskRequest::new("Write a note"))
+        .await
+        .unwrap();
+    let state = wait_terminal(&runtime, task_id).await;
+    let task = runtime.task(task_id).unwrap().unwrap();
+    assert_eq!(
+        state,
+        TaskState::Succeeded,
+        "a truncated call should be retried, not fail the task: error={:?}",
+        task.error
+    );
+    let limits = model.output_limits();
+    assert!(
+        limits.windows(2).any(|pair| pair[1] > pair[0]),
+        "the retry should ask for more output room: {limits:?}"
+    );
+}
+
+#[tokio::test]
 async fn unknown_tool_is_reported_back_to_the_model() {
     let temp = tempfile::tempdir().unwrap();
     let model = Arc::new(MockModel::scripted([

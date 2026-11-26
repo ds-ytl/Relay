@@ -4,7 +4,9 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use crate::{CompletionRequest, InputItem, LanguageModel, ModelOutput, Result, ToolCall, Usage};
+use crate::{
+    CompletionRequest, InputItem, LanguageModel, ModelError, ModelOutput, Result, ToolCall, Usage,
+};
 
 /// One scripted step: either return text directly or request tool calls.
 #[derive(Debug, Clone)]
@@ -12,6 +14,9 @@ pub enum MockStep {
     Text(String),
     /// (tool name, argument JSON)
     ToolCalls(Vec<(String, Value)>),
+    /// The output budget ran out before anything usable came back (a thinking model that spent it
+    /// all on reasoning).
+    Truncated,
 }
 
 impl MockStep {
@@ -130,6 +135,16 @@ impl MockModel {
             .collect()
     }
 
+    /// `max_output_tokens` of every request, in order: shows how the budget was widened.
+    pub fn output_limits(&self) -> Vec<u32> {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|request| request.max_output_tokens)
+            .collect()
+    }
+
     pub fn remaining(&self) -> usize {
         self.steps.lock().unwrap().len()
     }
@@ -184,6 +199,9 @@ impl LanguageModel for MockModel {
                 response_id: Some(format!("mock_{}", *calls + 1)),
                 tool_calls: Vec::new(),
                 replay_items: Vec::new(),
+            }),
+            MockStep::Truncated => Err(ModelError::Truncated {
+                reason: "max_output_tokens".into(),
             }),
             MockStep::ToolCalls(requested) => {
                 let mut tool_calls = Vec::new();
