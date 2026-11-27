@@ -4,6 +4,8 @@
 
 Relay is a context-aware, shell-native desktop agent that lives in your menu bar or system tray. One shortcut is enough: it reads the screen in front of you, turns a rough intention into a reviewable plan, then does the work in the background with scripts, command-line tools, and native UI automation. You keep working; the result lands next to you.
 
+https://github.com/user-attachments/assets/e7801c79-5f11-4ff7-b09f-2f1ffdb85706
+
 > Stop prompting. Start delegating. Bring AI to the work instead of hauling the work to AI.
 
 `Rust` · `GPUI` · `OpenAI Responses API` · `Local-first` · `Shell-native`
